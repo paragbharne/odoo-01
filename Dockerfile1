@@ -1,0 +1,64 @@
+FROM ubuntu:14.04
+
+MAINTAINER Parag Bharne <pari.bharne@gmail.com>
+
+RUN apt-get -y update && apt-get -y upgrade
+
+RUN apt-get install -y subversion git bzr bzrtools python-pip postgresql postgresql-client postgresql-server-dev-9.3 python-all-dev python-dev python-setuptools libxml2-dev libxslt1-dev libevent-dev libsasl2-dev libldap2-dev pkg-config libtiff5-dev libjpeg8-dev libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev liblcms2-utils libwebp-dev tcl8.6-dev tk8.6-dev python-tk libyaml-dev fontconfig 
+
+RUN apt-get -y install npm wget ssh ssmtp
+
+
+###Create the Odoo system user###
+RUN adduser --system --home=/opt/odoo --group odoo
+RUN mkdir /var/log/odoo
+
+WORKDIR /opt/odoo
+RUN git clone https://www.github.com/odoo/odoo --depth 1 --branch 9.0 --single-branch .
+
+##Dependencies for Odoo Applications###
+RUN pip install -r /opt/odoo/doc/requirements.txt
+RUN pip install -r /opt/odoo/requirements.txt
+
+###Install Less CSS via nodejs and npm###
+RUN wget -qO- https://deb.nodesource.com/setup | sudo bash -
+RUN apt-get -y install nodejs
+#RUN install -g less less-plugin-clean-css
+RUN npm install -g less less-plugin-clean-css
+
+###Install Updated Wkhtmltopdf Version####
+RUN wget http://download.gna.org/wkhtmltopdf/0.12/0.12.1/wkhtmltox-0.12.1_linux-trusty-amd64.deb
+RUN dpkg -i wkhtmltox-0.12.1_linux-trusty-amd64.deb
+
+RUN cp -r /usr/local/bin/wkhtmltopdf /usr/bin
+RUN cp -r /usr/local/bin/wkhtmltoimage /usr/bin
+
+####Odoo Server Configuration####
+ADD odoo-server.conf  /etc/
+
+WORKDIR /etc/
+
+RUN sed -i "s|; admin_passwd = admin|admin_passwd = admin|g" odoo-server.conf
+RUN sed -i "s|db_host = False|db_host = 192.168.1.131|g" odoo-server.conf
+RUN sed -i "s|db_port = False|db_port = 5432|g" odoo-server.conf
+RUN sed -i "s|db_user = odoo|db_user = odoo|g" odoo-server.conf
+RUN sed -i "s|db_password = False|db_password = password|g" odoo-server.conf
+RUN sed -i "s|addons_path = /usr/lib/python2.7/dist-packages/openerp/addons|addons_path = /opt/odoo/addons|g" odoo-server.conf
+
+ADD odoo-server /etc/init.d/
+
+###Odoo File Ownership and Permissions###
+RUN chmod 755 /etc/init.d/odoo-server
+RUN chown root: /etc/init.d/odoo-server
+
+RUN chown -R odoo: /opt/odoo/
+RUN chown odoo:root /var/log/odoo
+	
+RUN chown odoo: /etc/odoo-server.conf
+RUN chmod 640 /etc/odoo-server.conf
+
+RUN update-rc.d odoo-server defaults
+
+EXPOSE 8069
+
+ENTRYPOINT /etc/init.d/odoo-server start && bash
